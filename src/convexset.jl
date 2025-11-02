@@ -883,7 +883,11 @@ end
 CompositeConvexSet(args...) = CompositeConvexSet{DefaultFloat}(args...)
 
 function project!(x::SplitVector{T}, C::CompositeConvexSet{T}) where{T}
-    Threads.@threads for i = 1:length(C.sets)
+    n_sets = length(C.sets)
+    @info "Multi-threaded projection" n_sets=n_sets n_threads=Threads.nthreads() set_types=[typeof(s) for s in C.sets]
+
+    Threads.@threads for i = 1:n_sets
+        @info "Projecting onto set" thread_id=Threads.threadid() set_index=i set_type=typeof(C.sets[i]) set_dim=C.sets[i].dim
         project!(x.views[i],C.sets[i])
     end
 	#foreach(xC -> project!(xC[1], xC[2]), zip(x.views, C.sets))
