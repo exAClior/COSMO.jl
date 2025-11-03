@@ -32,6 +32,7 @@ end
 
 include("./algebra.jl")
 include("./projections.jl")
+include("./threading.jl")
 include("./chordal_decomposition/trees.jl")
 include("./chordal_decomposition/clique_graph.jl")
 include("./chordal_decomposition/clique_merging.jl")

@@ -6,13 +6,15 @@ Evaluates the proximal operator of the Indicator function I_{R^n × K}.
 """
 function admm_z!(s::SplitVector{T},
 	w::Vector{T},
-	set::CompositeConvexSet{T}, n::Int64) where {T <: AbstractFloat}
+	set::CompositeConvexSet{T},
+	settings,
+	n::Int64) where {T <: AbstractFloat}
 	# 1) Projection step of w onto R^n x K
 	# @. x = w[1:n] #this is handled via a view: x = view(w_prev, 1:n), prev to keep it in sync with s
 
 	# 2) s = Π(w)
 	@. s.data = w[n+1:end]
-	p_time = @elapsed project!(s, set)
+	p_time = @elapsed project!(s, set, settings)
 
 	# 3) y = ρ * (w - Π(w)) (Moreau decomposition)
 	# we recover μ from s and w just-in-time
@@ -149,7 +151,7 @@ function optimize!(ws::COSMO.Workspace{T}) where {T <: AbstractFloat}
 
 		# ADMM steps
 		@. ws.vars.w_prev = ws.vars.w
-		ws.times.proj_time += admm_z!(ws.vars.s, ws.vars.w, ws.p.C, n) 
+		ws.times.proj_time += admm_z!(ws.vars.s, ws.vars.w, ws.p.C, settings, n) 
 		apply_rho_adaptation_rules!(ws.ρvec, ws.rho_updates, settings, iter, iter_start, ws.times, ws, n)
 		admm_x!(ws.vars.s, ws.ν, ws.s_tl, ws.ls, ws.sol, ws.vars.w, ws.kkt_solver, ws.p.q, ws.p.b, ws.ρvec,settings.sigma, m, n)
 		admm_w!(ws.vars.s, ws.x_tl, ws.s_tl, ws.vars.w, settings.alpha, m, n);	

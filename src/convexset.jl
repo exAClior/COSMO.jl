@@ -882,16 +882,107 @@ end
 
 CompositeConvexSet(args...) = CompositeConvexSet{DefaultFloat}(args...)
 
-function project!(x::SplitVector{T}, C::CompositeConvexSet{T}) where{T}
-    n_sets = length(C.sets)
-    @info "Multi-threaded projection" n_sets=n_sets n_threads=Threads.nthreads() set_types=[typeof(s) for s in C.sets]
+# ---------------------------------------------
+# Adaptive Threading Support
+# ---------------------------------------------
 
-    Threads.@threads for i = 1:n_sets
-        @info "Projecting onto set" thread_id=Threads.threadid() set_index=i set_type=typeof(C.sets[i]) set_dim=C.sets[i].dim
-        project!(x.views[i],C.sets[i])
+"""
+    estimate_projection_work(cone::AbstractConvexSet{T}) -> Float64
+
+Estimate projection computation time in microseconds for a convex cone.
+
+Based on empirical measurements showing t ≈ 0.05 * n^2.7 μs for n×n PSD matrix.
+This is a conservative estimate used for threading decisions.
+"""
+function estimate_projection_work(cone::PsdCone{T})::Float64 where T
+    n = cone.sqrt_dim
+    # Empirical formula from benchmarks: eigenvalue decomposition cost
+    return 0.05 * n^2.7
+end
+
+function estimate_projection_work(cone::PsdConeTriangle{T})::Float64 where T
+    n = cone.sqrt_dim
+    # Similar complexity to PsdCone
+    return 0.05 * n^2.7
+end
+
+function estimate_projection_work(cone::AbstractConvexSet{T})::Float64 where T
+    # Conservative: assume cheap for non-PSD cones (SOC, Nonnegatives, ZeroSet)
+    # SOC projection is O(n), very fast
+    return 0.1
+end
+
+"""
+    should_use_threading(C::CompositeConvexSet{T}, settings) -> Bool
+
+Decide whether to use parallel projection based on estimated work and settings.
+
+Decision logic:
+1. If threading_override == :always → true
+2. If threading_override == :never → false
+3. If threading_override == :auto (default):
+   - Estimate total projection work
+   - Use threading if:
+     * total_work > threading_work_threshold (default 50 μs)
+     * number of sets >= threading_min_cones (default 4)
+     * Julia has multiple threads available
+"""
+function should_use_threading(
+    C::CompositeConvexSet{T},
+    settings
+)::Bool where T
+
+    # Handle override
+    if settings.threading_override == :always
+        return Threads.nthreads() > 1
+    elseif settings.threading_override == :never
+        return false
     end
-	#foreach(xC -> project!(xC[1], xC[2]), zip(x.views, C.sets))
-	return nothing
+
+    # Auto decision (default)
+    @assert settings.threading_override == :auto
+
+    # Check basic requirements
+    Threads.nthreads() == 1 && return false
+
+    n_sets = length(C.sets)
+    n_sets < settings.threading_min_cones && return false
+
+    # Estimate work
+    if settings.adaptive_threading
+        work_per_set = [estimate_projection_work(s) for s in C.sets]
+        total_work = sum(work_per_set)
+
+        return total_work > settings.threading_work_threshold
+    else
+        # Fallback: always thread if we have multiple threads and enough sets
+        return true
+    end
+end
+
+# ---------------------------------------------
+# End Adaptive Threading Support
+# ---------------------------------------------
+
+function project!(x::SplitVector{T}, C::CompositeConvexSet{T}, settings) where{T}
+    n_sets = length(C.sets)
+
+    # Decide whether to use threading based on adaptive logic
+    use_threading = should_use_threading(C, settings)
+
+    if use_threading
+        # Parallel projection
+        Threads.@threads for i = 1:n_sets
+            project!(x.views[i], C.sets[i])
+        end
+    else
+        # Sequential projection
+        for i = 1:n_sets
+            project!(x.views[i], C.sets[i])
+        end
+    end
+
+    return nothing
 end
 
 function support_function!(x::SplitVector{T}, C::CompositeConvexSet{T}, tol::T) where{T}

@@ -56,6 +56,10 @@ accelerator | Acceleration scheme | `AndersonAccelerator{T, Type2{QRDecomp}, Res
 accelerator_activation | Accelerator activation | `ImmediateActivation`
 safeguard | Accelerator safeguarding | true
 safeguard_tol | Safeguarding tolerance | 2.0
+adaptive_threading | Enable adaptive threading decision | true
+threading_work_threshold | Work threshold for threading (μs) | 50.0
+threading_min_cones | Minimum number of cones for threading | 4
+threading_override | Manual threading override | `:auto` (`:auto`, `:always`, `:never`)
 
 """
 mutable struct Settings{T <: AbstractFloat}
@@ -96,6 +100,10 @@ mutable struct Settings{T <: AbstractFloat}
 	accelerator::Union{Type{<: AbstractAccelerator}, OptionsFactory{<: AbstractAccelerator}}
 	safeguard::Bool
 	safeguard_tol::T
+	adaptive_threading::Bool
+	threading_work_threshold::T
+	threading_min_cones::Int
+	threading_override::Symbol
 
 	#constructor
 	function Settings{T}(;
@@ -134,8 +142,12 @@ mutable struct Settings{T <: AbstractFloat}
 		merge_strategy = CliqueGraphMerge,
 		compact_transformation::Bool = true,
 		accelerator = with_options(AndersonAccelerator{T, Type2{QRDecomp}, RestartedMemory, NoRegularizer}, mem = 15),
-		safeguard::Bool = true, 
-		safeguard_tol::T = T(2)
+		safeguard::Bool = true,
+		safeguard_tol::T = T(2),
+		adaptive_threading::Bool = true,
+		threading_work_threshold::Real = T(50.0),
+		threading_min_cones::Int = 4,
+		threading_override::Symbol = :auto
 		) where {T <: AbstractFloat}
 		if !isa(kkt_solver, OptionsFactory)
 			kkt_solver = with_options(kkt_solver)
@@ -148,9 +160,18 @@ mutable struct Settings{T <: AbstractFloat}
 		if !isa(accelerator, OptionsFactory)
 			accelerator = with_options(accelerator)
 		end
-		
 
-		new(rho, sigma, alpha, eps_abs, eps_rel, nearly_ratio, eps_prim_inf, eps_dual_inf, max_iter, verbose, kkt_solver, check_termination, check_infeasibility, scaling, MIN_SCALING, MAX_SCALING, adaptive_rho, adaptive_rho_interval, adaptive_rho_tolerance, adaptive_rho_fraction, adaptive_rho_max_adaptions, verbose_timing, RHO_MIN, RHO_MAX, RHO_TOL, RHO_EQ_OVER_RHO_INEQ, COSMO_INFTY, decompose, complete_dual, time_limit, obj_true, obj_true_tol, merge_strategy, compact_transformation, accelerator, safeguard, safeguard_tol)
+		# Validate threading_override
+		threading_override in [:auto, :always, :never] ||
+			error("threading_override must be :auto, :always, or :never")
+
+		# Validate threading parameters
+		threading_work_threshold > 0 ||
+			error("threading_work_threshold must be positive")
+		threading_min_cones > 0 ||
+			error("threading_min_cones must be positive")
+
+		new(rho, sigma, alpha, eps_abs, eps_rel, nearly_ratio, eps_prim_inf, eps_dual_inf, max_iter, verbose, kkt_solver, check_termination, check_infeasibility, scaling, MIN_SCALING, MAX_SCALING, adaptive_rho, adaptive_rho_interval, adaptive_rho_tolerance, adaptive_rho_fraction, adaptive_rho_max_adaptions, verbose_timing, RHO_MIN, RHO_MAX, RHO_TOL, RHO_EQ_OVER_RHO_INEQ, COSMO_INFTY, decompose, complete_dual, time_limit, obj_true, obj_true_tol, merge_strategy, compact_transformation, accelerator, safeguard, safeguard_tol, adaptive_threading, T(threading_work_threshold), threading_min_cones, threading_override)
 	end
 end
 
