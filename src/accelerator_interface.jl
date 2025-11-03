@@ -98,9 +98,9 @@ function acceleration_post!(accelerator::CA.AndersonAccelerator, ws::Workspace{T
             if nrm_f_acc > nrm_tol
                 CA.log!(accelerator, num_iter, :acc_guarded_declined)
 				# don't use accelerated candidate point. Reset w = g_last
-				reset_accelerated_vector!(ws.vars.w, ws.vars.w_prev, accelerator)	
-				m, n = ws.p.model_size 
-				ws.times.proj_time += admm_z!(ws.vars.s, ws.vars.w, ws.p.C, n) 			
+				reset_accelerated_vector!(ws.vars.w, ws.vars.w_prev, accelerator)
+				m, n = ws.p.model_size
+				ws.times.proj_time += admm_z!(ws.vars.s, ws.vars.w, ws.p.C, ws.settings, n) 			
 				admm_x!(ws.vars.s, ws.ν, ws.s_tl, ws.ls, ws.sol, ws.vars.w, ws.kkt_solver, ws.p.q, ws.p.b, ws.ρvec, ws.settings.sigma, m, n)
 				admm_w!(ws.vars.s, ws.x_tl, ws.s_tl, ws.vars.w, ws.settings.alpha, m, n);
 				ws.safeguarding_iter += 1
